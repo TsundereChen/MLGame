@@ -11,3 +11,5 @@ venv/*
 ml_play*.py
 !ml_play_template.py
 !ml_play_manual.py
+.env
+.ipynb_checkpoints
