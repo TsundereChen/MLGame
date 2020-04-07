@@ -4,7 +4,7 @@ import traceback
 from multiprocessing import Process, Pipe
 from .communication.base import CommunicationSet, CommunicationHandler
 from .exception import (
-    GameProcessError, MLProcessError, \
+    GameProcessError, MLProcessError,
         trim_callstack
 )
 
@@ -71,9 +71,11 @@ class ProcessManager:
 
         self._create_pipes()
         self._start_ml_processes()
-        self._start_game_process()
+        returncode = self._start_game_process()
 
         self._terminate()
+
+        return returncode
 
     def _create_pipes(self):
         """
@@ -84,9 +86,9 @@ class ProcessManager:
             recv_pipe_for_game, send_pipe_for_ml = Pipe(False)
             recv_pipe_for_ml, send_pipe_for_game = Pipe(False)
 
-            self._game_proc_helper.add_comm_to_ml(ml_proc_helper.name, \
+            self._game_proc_helper.add_comm_to_ml(ml_proc_helper.name,
                 recv_pipe_for_game, send_pipe_for_game)
-            ml_proc_helper.set_comm_to_game( \
+            ml_proc_helper.set_comm_to_game(
                 recv_pipe_for_ml, send_pipe_for_ml)
 
     def _start_ml_processes(self):
@@ -94,7 +96,7 @@ class ProcessManager:
         Spawn and start all ml processes
         """
         for ml_proc_helper in self._ml_proc_helpers:
-            process = Process(target = _ml_process_entry_point, \
+            process = Process(target = _ml_process_entry_point,
                 name = ml_proc_helper.name, args = (ml_proc_helper,))
             process.start()
 
@@ -104,11 +106,15 @@ class ProcessManager:
         """
         Start the game process
         """
+        returncode = 0
         try:
             _game_process_entry_point(self._game_proc_helper)
         except (MLProcessError, GameProcessError) as e:
-            print("*** Error occurred in \"{}\" process:".format(e.process_name))
+            print("*** Error occurred in '{}' process:".format(e.process_name))
             print(e.message)
+            returncode = 2
+
+        return returncode
 
     def _terminate(self):
         """
@@ -274,6 +280,8 @@ def _game_process_entry_point(helper: GameProcessHelper):
     try:
         helper.target_function(*helper.args, **helper.kwargs)
     except MLProcessError:
+        # This exception wil be raised when invoking `recv_from_ml()` and
+        # receive `MLProcessError` object from it
         raise
     except Exception:
         raise GameProcessError(helper.name, traceback.format_exc())
