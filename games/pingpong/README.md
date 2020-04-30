@@ -10,10 +10,10 @@ There are two mechanisms. One is ball slicing: The x speed of the ball will be c
 
 ## Execution
 
-* Manual mode: `python MLGame.py pingpong <difficulty> [game_over_score] -m`
+* Manual mode: `python MLGame.py -m pingpong <difficulty> [game_over_score]`
     * Serve the ball to the left/right: 1P - `.`, `/`; 2P - `Q`, `E`
     * Move the platform: 1P - `left`, `right` arrow keys; 2P - `A`, `D`
-* ML mode: `python MLGame.py pingpong <difficulty> [game_over_score] -i ml_play_template.py`
+* ML mode: `python MLGame.py -i ml_play_template.py pingpong <difficulty> [game_over_score]`
 
 ### Game Parameters
 
@@ -88,61 +88,56 @@ def ml_loop(side):
 
 ### Methods
 
-The following methods are defined in [`games.pingpong.communication`](communication.py).
+Use `mlgame.communication.ml` module to communicate with game process:
 
-* `ml_ready()`: Inform the game process that ml process is ready.
-* `get_scene_info()`: Receive the `SceneInfo` sent from the game process.
-* `send_instruction(frame, command)`: Send the command to the game process.
-    * `frame`: The number of frame that this command is for. This value should be the same as the `frame` of the received `SceneInfo`.
-    * `command`: The command for controlling the platform. It's one of `PlatformAction`.
+* `ml_ready()`: Inform the game process that ml process is ready
+* `recv_from_game()`: Receive a dictionary object storing the scene information from the game process
+* `send_to_game(dict)`: Send a dictionary object storing the game command to the game process
 
-### Data Structures
+### Communication Objects
 
-The following data structures are imported in [`games.pingpong.communication`](communication.py).
+The dictionary object are used as communication object transporting between game and ml processes.
 
-#### `SceneInfo`
+#### Scene Information
 
-Store the information of the scene. Defined in [`game/gamecore.py`](game/gamecore.py).
+It is an dictionary object sent from the game process, and also an object to be pickled in the record file.
 
-The members of the `SceneInfo`:
+The keys and values of the scene information:
 
-* `frame`: The number of frame that this `SceneInfo` is for
-* `status`: The game status at this frame. It's one of `GameStatus`.
-* `ball`: The position of the ball. It's a `(x, y)` tuple.
-* `ball_speed`: The speed of the ball. It's a `(x, y)` tuple.
-* `platform_1P`: The position of the 1P platform. It's a `(x, y)` tuple.
-* `platform_2P`: The position of the 2P platform. It's a `(x, y)` tuple.
-* `blocker`: The position of the blocker. It's a `(x, y)` tuple. If the game is not on `HARD` difficulty, this field is `None`.
-* `command_1P`: The command 1P decided according to this frame.
-* `command_2P`: The command 2P decided according to this frame.
+* `"frame"`: An integer. The number of frame that this scene information is for
+* `"status"`: A string. The game status at this frame. It's one of the following 4 statuses:
+    * `"GAME_ALIVE"`: This round is still going.
+    * `"GAME_1P_WIN"`: 1P wins this round.
+    * `"GAME_2P_WIN"`: 2P wins this round.
+    * `"GAME_DRAW"`: This round is a draw game.
+* `"ball"`: An `(x, y)` tuple. The position of the ball.
+* `"ball_speed"`: An `(x, y)` tuple. The speed of the ball.
+* `"platform_1P"`: An `(x, y)` tuple. The position of the 1P platform.
+* `"platform_2P"`: An `(x, y)` tuple. The position of the 2P platform.
+* `"blocker"`: An `(x, y)` tuple. The position of the blocker. If the game is not on `HARD` difficulty, this field is `None`.
+* `"command_1P"`: A string. The command 1P decided according to this frame. Only included in the record file.
+* `"command_2P"`: A string. The command 2P decided according to this frame. Only included in the record file.
 
-#### `GameStatus`
+#### Game Command
 
-The game status. Defined in [`game/gamecore.py`](game/gamecore.py).
+It is an dictionary object sent to the game process for controlling the platform.
 
-There are 4 `GameStatus`:
-* `GAME_ALIVE`: This round is still going.
-* `GAME_1P_WIN`: 1P wins this round.
-* `GAME_2P_WIN`: 2P wins this round.
-* `GAME_DRAW`: This round is a draw game.
+The keys and values of the game command:
 
-#### `PlatformAction`
-
-Control the platform. Defined in [`game/gameobject.py`](game/gameobject.py).
-
-There are 5 `PlatformAction`:
-* `SERVE_TO_LEFT`: Serve the ball to the left.
-* `SERVE_TO_RIGHT`: Serve the ball to the right.
-* `MOVE_LEFT`: Move the platform to the left.
-* `MOVE_RIGHT`: Move the platform to the right.
-* `NONE`: Do nothing.
+* `"frame"`: An integer. The number of frame that this game command is for. It should be the same as the frame of the scene information received.
+* `"command"`: A string. It's one of the following commands:
+    * `"SERVE_TO_LEFT"`: Serve the ball to the left.
+    * `"SERVE_TO_RIGHT"`: Serve the ball to the right.
+    * `"MOVE_LEFT"`: Move the platform to the left.
+    * `"MOVE_RIGHT"`: Move the platform to the right.
+    * `"NONE"`: Do nothing.
 
 ## Input Scripts for ML Mode
 
-The pingpong game is a 2P game, so it can accept two different ml scripts by specifying `-i <script_for_1P> <script_for_2P>`. If there is only one script specified, 1P and 2P will use the same script.
+The pingpong game is a 2P game, so it can accept two different ml scripts by specifying `-i <script_for_1P> -i <script_for_2P>`. If there is only one script specified, 1P and 2P will use the same script.
 
-You can specify `ml_play_manual.py` as the input script. It will create an invisible joystick for you to play with the ml process. For example: 
-1. Start the game by the command `python MLGame.py pingpong <difficulty> -i ml_play_template.py ml_play_manual.py`. There will be 2 windows, and one is the "Invisible joystick". The terminal will output a message "Invisible joystick is used. Press Enter to start the 2P ml process."
+You can specify `ml_play_manual.py` as the input script. It will create an invisible joystick for you to play with the ml process. For example:
+1. Start the game by the command `python MLGame.py -i ml_play_template.py -i ml_play_manual.py pingpong <difficulty>`. There will be 2 windows, and one is the "Invisible joystick". The terminal will output a message "Invisible joystick is used. Press Enter to start the 2P ml process."
 
 <img src="https://i.imgur.com/iyrS87t.png" height="500px" />
 
@@ -154,4 +149,4 @@ You can specify `ml_play_manual.py` as the input script. It will create an invis
 
 ## About the Ball
 
-The behavior of the ball is the same as the game "Arkanoid". 
+The behavior of the ball is the same as the game "Arkanoid".
