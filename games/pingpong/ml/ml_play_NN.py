@@ -56,7 +56,7 @@ def ml_loop(side: str):
     Prepare variables needed
     """
     xTrain, yTrain, rewards = [], [], []
-    rewardSum = 0
+    rewardSum = 0.0
     episodeNum = 0
 
     # 2. Inform the game process that ml process is ready
@@ -75,8 +75,8 @@ def ml_loop(side: str):
             ball_served = False
             print('At run {}, the total reward was: {}'.format(episodeNum, rewardSum))
             episodeNum += 1
-            #model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1, sample_weight = discount_rewards(rewards, gamma))
-            model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1)
+            model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1, sample_weight = discount_rewards(rewards, gamma))
+            #model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1)
             xTrain, yTrain, rewards = [], [], []
             rewardSum = 0
             prevInput = None
@@ -105,7 +105,7 @@ def ml_loop(side: str):
             Send command
             """
             comm.send_to_game({"frame": scene_info["frame"], "command": action})
-            rewardSum += 1
+            rewardSum += 0.1
             rewards.append(rewardSum)
 
 
