@@ -12,3 +12,5 @@ venv/*
 !ml_play_manual.py
 .env
 .ipynb_checkpoints
+*saved_model
+*log
