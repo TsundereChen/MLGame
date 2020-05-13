@@ -2,15 +2,25 @@
 The template of the script for the machine learning process in game pingpong
 """
 import tensorflow as tf
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import DenseFeatures
-from tensorflow.keras.optimizers import Adam
 import numpy as np
-
 
 # Import the necessary modules and classes
 from mlgame.communication import ml as comm
+
+# reward discount used by Karpathy (cf. https://gist.github.com/karpathy/a4166c7fe253700972fcbc77e4ea32c5)
+def discount_rewards(r, gamma):
+  """ take 1D float array of rewards and compute discounted reward """
+  r = np.array(r)
+  discounted_r = np.zeros_like(r)
+  running_add = 0
+  # we go from last reward to first one so we don't have to do exponentiations
+  for t in reversed(range(0, r.size)):
+    if r[t] != 0: running_add = 0 # if the game ended (in Pong), reset the reward sum
+    running_add = running_add * gamma + r[t] # the point here is to use Horner's method to compute those rewards efficiently
+    discounted_r[t] = running_add
+  discounted_r -= np.mean(discounted_r) #normalizing the result
+  discounted_r /= np.std(discounted_r) #idem
+  return discounted_r
 
 def ml_loop(side: str):
     """
@@ -31,7 +41,23 @@ def ml_loop(side: str):
     # === Here is the execution order of the loop === #
     # 1. Put the initialization code here
     ball_served = False
-    model = tf.keras.models.load_model('saved_model/myModel')
+
+    """
+    Create a new model
+    """
+    model = tf.keras.models.Sequential()
+    model.add(tf.keras.layers.Dense(units=6, activation='relu', kernel_initializer='glorot_uniform'))
+    model.add(tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_initializer='RandomNormal'))
+    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+    prevInput = None
+    gamma = 0.99
+
+    """
+    Prepare variables needed
+    """
+    xTrain, yTrain, rewards = [], [], []
+    rewardSum = 0
+    episodeNum = 0
 
     # 2. Inform the game process that ml process is ready
     comm.ml_ready()
@@ -47,35 +73,50 @@ def ml_loop(side: str):
         if scene_info["status"] != "GAME_ALIVE":
             # Do some updating or resetting stuff
             ball_served = False
-
+            print('At run {}, the total reward was: {}'.format(episodeNum, rewardSum))
+            episodeNum += 1
+            #model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1, sample_weight = discount_rewards(rewards, gamma))
+            model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1)
+            xTrain, yTrain, rewards = [], [], []
+            rewardSum = 0
+            prevInput = None
             # 3.2.1 Inform the game process that
             #       the ml process is ready for the next round
             comm.ml_ready()
             continue
 
         # 3.3 Put the code here to handle the scene information
-
         # 3.4 Send the instruction for this frame to the game process
         if not ball_served:
             comm.send_to_game({"frame": scene_info["frame"], "command": "SERVE_TO_RIGHT"})
             ball_served = True
         else:
-            ballX = scene_info["ball"][0]
-            ballY = scene_info["ball"][1]
-            ball_speed_X = scene_info["ball_speed"][0]
-            ball_speed_Y = scene_info["ball_speed"][1]
-            platform_1P_X = scene_info["platform_1P"][0]
-            blocker_X = scene_info["blocker"][0]
-            features = [[ballX, ballY, ball_speed_X, ball_speed_Y, platform_1P_X, blocker_X]]
-            prediction = model.predict(features)
-            awaitCommand = np.argmax(prediction[0])
-            print(awaitCommand)
-            if awaitCommand == 1:
-                comm.send_to_game({"frame": scene_info["frame"], "command": "NONE"})
-                print('NONE')
-            elif awaitCommand == 2:
-                comm.send_to_game({"frame": scene_info["frame"], "command": "MOVE_RIGHT"})
-                print('RIGHT')
-            elif awaitCommand == 0:
-                comm.send_to_game({"frame": scene_info["frame"], "command": "MOVE_LEFT"})
-                print('LEFT')
+            currentInput = dataProcess(scene_info)
+            x = currentInput - prevInput if prevInput is not None else np.zeros(8)
+            prevInput = currentInput
+
+            proba = model.predict(np.expand_dims(x, axis=1).T)
+            action = "MOVE_LEFT" if np.random.uniform() < proba else "MOVE_RIGHT"
+            y = 0 if action == "MOVE_LEFT" else 1
+            xTrain.append(x)
+            yTrain.append(y)
+
+            """
+            Send command
+            """
+            comm.send_to_game({"frame": scene_info["frame"], "command": action})
+            rewardSum += 1
+            rewards.append(rewardSum)
+
+
+def dataProcess(scene_info):
+    frame       = scene_info["frame"]
+    ballX       = scene_info["ball"][0]
+    ballY       = scene_info["ball"][1]
+    ballSpeedX  = scene_info["ball_speed"][0]
+    ballSpeedY  = scene_info["ball_speed"][1]
+    platform1PX = scene_info["platform_1P"][0]
+    platform2PX = scene_info["platform_2P"][0]
+    blockerX    = scene_info["blocker"][0]
+    arr         = np.array([frame, ballX, ballY, ballSpeedX, ballSpeedY, platform1PX, platform2PX, blockerX])
+    return arr
