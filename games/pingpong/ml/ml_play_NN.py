@@ -3,7 +3,8 @@ The template of the script for the machine learning process in game pingpong
 """
 import tensorflow as tf
 import numpy as np
-
+from datetime import datetime
+import os
 # Import the necessary modules and classes
 from mlgame.communication import ml as comm
 
@@ -45,12 +46,20 @@ def ml_loop(side: str):
     """
     Create a new model
     """
-    model = tf.keras.models.Sequential()
-    model.add(tf.keras.layers.Dense(units=6, activation='relu', kernel_initializer='glorot_uniform'))
-    model.add(tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_initializer='RandomNormal'))
-    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+    currentPath = os.path.dirname(os.path.abspath(__file__))
+    modelFilename = "myModel"
+    if os.path.exists(currentPath + "/" + modelFilename):
+        print("LOAD MODEL....")
+        model = tf.keras.models.load_model(currentPath + "/" + modelFilename)
+    else:
+        print("No model found, creating new model...")
+        model = tf.keras.models.Sequential()
+        model.add(tf.keras.layers.Dense(units=6, activation='relu', kernel_initializer='glorot_uniform'))
+        model.add(tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_initializer='RandomNormal'))
+        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
     prevInput = None
     gamma = 0.99
+
 
     """
     Prepare variables needed
@@ -58,6 +67,13 @@ def ml_loop(side: str):
     xTrain, yTrain, rewards = [], [], []
     rewardSum = 0.0
     episodeNum = 0
+    resume = True
+    runningReward = None
+    epochsBeforeSaving = 10
+
+    """
+    Try to load previous model
+    """
 
     # 2. Inform the game process that ml process is ready
     comm.ml_ready()
@@ -77,6 +93,10 @@ def ml_loop(side: str):
             episodeNum += 1
             model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1, sample_weight = discount_rewards(rewards, gamma))
             #model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1)
+
+            if episodeNum % epochsBeforeSaving == 0:
+                model.save(currentPath + "/" + modelFilename)
+
             xTrain, yTrain, rewards = [], [], []
             rewardSum = 0
             prevInput = None
