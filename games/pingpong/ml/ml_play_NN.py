@@ -54,7 +54,9 @@ def ml_loop(side: str):
     else:
         print("No model found, creating new model...")
         model = tf.keras.models.Sequential()
-        model.add(tf.keras.layers.Dense(units=6, activation='relu', kernel_initializer='glorot_uniform'))
+        model.add(tf.keras.layers.Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'))
+        model.add(tf.keras.layers.Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'))
+        model.add(tf.keras.layers.Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'))
         model.add(tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_initializer='RandomNormal'))
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
     prevInput = None
@@ -112,7 +114,7 @@ def ml_loop(side: str):
             ball_served = True
         else:
             currentInput = dataProcess(scene_info)
-            x = currentInput - prevInput if prevInput is not None else np.zeros(8)
+            x = currentInput - prevInput if prevInput is not None else np.zeros(10)
             prevInput = currentInput
 
             proba = model.predict(np.expand_dims(x, axis=1).T)
@@ -125,18 +127,21 @@ def ml_loop(side: str):
             Send command
             """
             comm.send_to_game({"frame": scene_info["frame"], "command": action})
-            rewardSum += 0.1
+            rewardSum += 0.001
             rewards.append(rewardSum)
 
 
 def dataProcess(scene_info):
-    frame       = scene_info["frame"]
     ballX       = scene_info["ball"][0]
     ballY       = scene_info["ball"][1]
     ballSpeedX  = scene_info["ball_speed"][0]
     ballSpeedY  = scene_info["ball_speed"][1]
     platform1PX = scene_info["platform_1P"][0]
+    platform1PY = scene_info["platform_1P"][1]
     platform2PX = scene_info["platform_2P"][0]
+    platform2PY = scene_info["platform_2P"][1]
     blockerX    = scene_info["blocker"][0]
-    arr         = np.array([frame, ballX, ballY, ballSpeedX, ballSpeedY, platform1PX, platform2PX, blockerX])
+    blockerY    = scene_info["blocker"][1]
+    arr         = np.array([ballX, ballY, ballSpeedX, ballSpeedY,
+        platform1PX, platform1PY, platform2PX, platform2PY, blockerX, blockerY])
     return arr
