@@ -1,10 +1,14 @@
 """
 The template of the script for the machine learning process in game pingpong
 """
+
+# Import necessary libraries
+import random
 import tensorflow as tf
 import numpy as np
-from datetime import datetime
+import math
 import os
+
 # Import the necessary modules and classes
 from mlgame.communication import ml as comm
 
@@ -54,24 +58,35 @@ def ml_loop(side: str):
     else:
         print("No model found, creating new model...")
         model = tf.keras.models.Sequential()
-        model.add(tf.keras.layers.Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'))
-        model.add(tf.keras.layers.Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'))
-        model.add(tf.keras.layers.Dense(units=10, activation='relu', kernel_initializer='glorot_uniform'))
+        model.add(tf.keras.layers.Dense(units=64, activation='relu', kernel_initializer='glorot_uniform'))
+        model.add(tf.keras.layers.Dense(units=64, activation='relu', kernel_initializer='glorot_uniform'))
+        model.add(tf.keras.layers.Dense(units=64, activation='relu', kernel_initializer='glorot_uniform'))
+        model.add(tf.keras.layers.Dense(units=64, activation='relu', kernel_initializer='glorot_uniform'))
+        model.add(tf.keras.layers.Dense(units=64, activation='relu', kernel_initializer='glorot_uniform'))
         model.add(tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_initializer='RandomNormal'))
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
     prevInput = None
-    gamma = 0.99
+    ballPrevPos = None
+    gamma = 0.999
 
 
     """
     Prepare variables needed
     """
     xTrain, yTrain, rewards = [], [], []
+    reward = None
     rewardSum = 0.0
     episodeNum = 0
     resume = True
     runningReward = None
     epochsBeforeSaving = 10
+    penalty = None
+
+
+    """
+    Debug variable, change to True to enable debug logging
+    """
+    DEBUG = True
 
     """
     Try to load previous model
@@ -90,8 +105,14 @@ def ml_loop(side: str):
         #      is ready.
         if scene_info["status"] != "GAME_ALIVE":
             # Do some updating or resetting stuff
+            if scene_info["status"] == "GAME_2P_WIN":
+                # Lose Penalty
+                penalty = penaltyCalculator(scene_info['platform_1P'], scene_info['ball'])
+                reward = reward * penalty
             ball_served = False
-            print('At run {}, the total reward was: {}'.format(episodeNum, rewardSum))
+            if DEBUG:
+                print('At run {}, the total reward was: {}'.format(episodeNum, rewardSum))
+                print('Penalty: {}'.format(penalty))
             episodeNum += 1
             model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1, sample_weight = discount_rewards(rewards, gamma))
             #model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1)
@@ -101,6 +122,7 @@ def ml_loop(side: str):
 
             xTrain, yTrain, rewards = [], [], []
             rewardSum = 0
+            reward = None
             prevInput = None
             # 3.2.1 Inform the game process that
             #       the ml process is ready for the next round
@@ -110,9 +132,19 @@ def ml_loop(side: str):
         # 3.3 Put the code here to handle the scene information
         # 3.4 Send the instruction for this frame to the game process
         if not ball_served:
-            comm.send_to_game({"frame": scene_info["frame"], "command": "SERVE_TO_RIGHT"})
+            ballServeRand = random.randint(0, 1)
+            if ballServeRand == 0:
+                comm.send_to_game({"frame": scene_info["frame"], "command": "SERVE_TO_LEFT"})
+            elif ballServeRand == 1:
+                comm.send_to_game({"frame": scene_info["frame"], "command": "SERVE_TO_RIGHT"})
             ball_served = True
+            reward = 0.0
         else:
+            ballPos = (scene_info['ball'][0], scene_info['ball'][1])
+            if ballPrevPos != None:
+                bounced = bounceCheck(ballPos, ballPrevPos)
+                if bounced == 1:
+                    reward += 0.1
             currentInput = dataProcess(scene_info)
             x = currentInput - prevInput if prevInput is not None else np.zeros(10)
             prevInput = currentInput
@@ -127,8 +159,10 @@ def ml_loop(side: str):
             Send command
             """
             comm.send_to_game({"frame": scene_info["frame"], "command": action})
-            rewardSum += 0.001
-            rewards.append(rewardSum)
+            reward += 0.00001
+            rewardSum += reward
+            rewards.append(reward)
+            ballPrevPos = ballPos
 
 
 def dataProcess(scene_info):
@@ -145,3 +179,29 @@ def dataProcess(scene_info):
     arr         = np.array([ballX, ballY, ballSpeedX, ballSpeedY,
         platform1PX, platform1PY, platform2PX, platform2PY, blockerX, blockerY])
     return arr
+
+def bounceCheck(ballPos, ballPrevPos):
+    ballPosX     = ballPos[0]
+    ballPosY     = ballPos[1]
+    ballPrevPosX = ballPrevPos[0]
+    ballPrevPosY = ballPrevPos[1]
+    if ballPosY < 380: return 0
+    else:
+        if ballPrevPosY > ballPosY:
+            # Bounced back
+            print("BOUNCED!")
+            return 1
+        else: return 0
+
+def penaltyCalculator(platform, ball):
+    platformX = platform[0]
+    ballX = ball[0]
+    if ballX > platformX:
+        # Ball falls from RHS
+        platformX = platformX + 40
+    else:
+        # Ball falls from LHS
+        platformX = platformX
+    distance = abs(platformX - ballX)
+    distance = distance / 160.0
+    return ((1 - distance) * 0.5)
