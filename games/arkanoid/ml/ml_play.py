@@ -1,170 +1,188 @@
 """
-The template of the main script of the machine learning process
+The template of the script for the machine learning process in game pingpong
 """
 
-import games.arkanoid.communication as comm
-from games.arkanoid.communication import ( \
-    SceneInfo, GameStatus, PlatformAction
-)
-
-"""
-Custom import
-"""
-
-import pickle
-from os import path
+# Import necessary libraries
 import random
+import tensorflow as tf
+import numpy as np
+import math
+import os
 
-"""
-Custom variable
-"""
-DEBUG = False
+# Import the necessary modules and classes
+from mlgame.communication import ml as comm
 
-class FrameInfo():
-    def __init__(self, frame, ball_location, board_location, board_movement):
-        self.frame = frame
-        self.ball_location = ball_location
-        self.board_location = board_location
-        self.board_movement = board_movement
-    def represent(self):
-        print("frame: {}, ball_location: {}, board_location: {}, board_movement: {}".format(self.frame, self.ball_location, self.board_location, self.board_movement))
+# reward discount used by Karpathy (cf. https://gist.github.com/karpathy/a4166c7fe253700972fcbc77e4ea32c5)
+def discount_rewards(r, gamma):
+  """ take 1D float array of rewards and compute discounted reward """
+  r = np.array(r)
+  discounted_r = np.zeros_like(r)
+  running_add = 0
+  # we go from last reward to first one so we don't have to do exponentiations
+  for t in reversed(range(0, r.size)):
+    if r[t] != 0: running_add = 0 # if the game ended (in Pong), reset the reward sum
+    running_add = running_add * gamma + r[t] # the point here is to use Horner's method to compute those rewards efficiently
+    discounted_r[t] = running_add
+  discounted_r -= np.mean(discounted_r) #normalizing the result
+  discounted_r /= np.std(discounted_r) #idem
+  return discounted_r
 
 def ml_loop():
     """
-    The main loop of the machine learning process
-
-    This loop is run in a separate process, and communicates with the game process.
-
-    Note that the game process won't wait for the ml process to generate the
-    GameInstruction. It is possible that the frame of the GameInstruction
-    is behind of the current frame in the game process. Try to decrease the fps
-    to avoid this situation.
+    The main loop for the machine learning process
     """
 
     # === Here is the execution order of the loop === #
-    # 1. Put the initialization code here.
+    # 1. Put the initialization code here
     ball_served = False
-    filename = 'normal.3.calsol.pickle'
-    filename = path.join(path.dirname(__file__), "pickles", filename)
-    dataIntoPickle = []
 
-    # 2. Inform the game process that ml process is ready before start the loop.
+    """
+    Create a new model
+    """
+    currentPath = os.path.dirname(os.path.abspath(__file__))
+    modelFilename = "myModel"
+    if os.path.exists(currentPath + "/" + modelFilename):
+        print("LOAD MODEL....")
+        model = tf.keras.models.load_model(currentPath + "/" + modelFilename)
+    else:
+        print("No model found, creating new model...")
+        model = tf.keras.models.Sequential()
+        model.add(tf.keras.layers.Dense(units=32, activation='relu', kernel_initializer='glorot_uniform'))
+        model.add(tf.keras.layers.Dense(units=32, activation='relu', kernel_initializer='glorot_uniform'))
+        model.add(tf.keras.layers.Dense(units=1, activation='sigmoid', kernel_initializer='RandomNormal'))
+        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+    prevInput = None
+    ballPrevPos = None
+    gamma = 0.999
+
+
+    """
+    Prepare variables needed
+    """
+    xTrain, yTrain, rewards = [], [], []
+    reward = None
+    rewardSum = 0.0
+    episodeNum = 0
+    resume = True
+    runningReward = None
+    epochsBeforeSaving = 10
+    penalty = None
+
+
+    """
+    Debug variable, change to True to enable debug logging
+    """
+    DEBUG = True
+
+    """
+    Try to load previous model
+    """
+
+    # 2. Inform the game process that ml process is ready
     comm.ml_ready()
 
-    # 3. Start an endless loop.
+    # 3. Start an endless loop
     while True:
-        # 3.1. Receive the scene information sent from the game process.
-        scene_info = comm.get_scene_info()
+        # 3.1. Receive the scene information sent from the game process
+        scene_info = comm.recv_from_game()
 
-        ## Initial previous ball location variable
-        if not ball_served:
-            ball_previous = (0,0)
-
-        # 3.2. If the game is over or passed, the game process will reset
-        #      the scene and wait for ml process doing resetting job.
-        if scene_info.status == GameStatus.GAME_OVER or \
-            scene_info.status == GameStatus.GAME_PASS:
-            # Do some stuff if needed
+        # 3.2. If either of two sides wins the game, do the updating or
+        #      resetting stuff and inform the game process when the ml process
+        #      is ready.
+        if scene_info["status"] != "GAME_ALIVE":
+            # Do some updating or resetting stuff
+            if scene_info["status"] == "GAME_OVER":
+                # Lose Penalty
+                penalty = penaltyCalculator(scene_info['platform'], scene_info['ball'])
+                reward = reward * penalty
+            elif scene_info['status'] == "GAME_PASS":
+                reward = reward * 3
             ball_served = False
-            # 3.2.1. Inform the game process that ml process is ready
+            if DEBUG:
+                print('At run {}, the total reward was: {}'.format(episodeNum, rewardSum))
+                print('Penalty: {}'.format(penalty))
+            episodeNum += 1
+            model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1, sample_weight = discount_rewards(rewards, gamma))
+            #model.fit(x = np.vstack(xTrain), y = np.vstack(yTrain), verbose = 1)
+
+            if episodeNum % epochsBeforeSaving == 0:
+                model.save(currentPath + "/" + modelFilename)
+
+            xTrain, yTrain, rewards = [], [], []
+            rewardSum = 0
+            reward = None
+            prevInput = None
+            # 3.2.1 Inform the game process that
+            #       the ml process is ready for the next round
             comm.ml_ready()
             continue
 
-        # 3.3. Put the code here to handle the scene information
-
-        # Find the ball
-        ball_location = scene_info.ball
-
-        # We only want to calculate the destination of the ball after the ball is served
-        # It's meanless to calculate the value if the ball is still on the platform
-        if ball_served:
-            ball_destination = ballDestination(ball_location, ball_previous)
-
-        # Update ball_previous location for next move
-        ball_previous = ball_location
-
-        # 3.4. Send the instruction for this frame to the game process
+        # 3.3 Put the code here to handle the scene information
+        # 3.4 Send the instruction for this frame to the game process
         if not ball_served:
-            LEFT_OR_RIGHT = random.randint(0,1)
-            if(LEFT_OR_RIGHT):
-                comm.send_instruction(scene_info.frame, PlatformAction.SERVE_TO_RIGHT)
-            else:
-                comm.send_instruction(scene_info.frame, PlatformAction.SERVE_TO_LEFT)
+            ballServeRand = random.randint(0, 1)
+            if ballServeRand == 0:
+                comm.send_to_game({"frame": scene_info["frame"], "command": "SERVE_TO_LEFT"})
+            elif ballServeRand == 1:
+                comm.send_to_game({"frame": scene_info["frame"], "command": "SERVE_TO_RIGHT"})
             ball_served = True
+            reward = 0.0
         else:
-            if ball_destination == (-1, -1):
-                data = FrameInfo(scene_info.frame, ball_location, scene_info.platform, 0)
-                dataIntoPickle.append(data)
-                data.represent()
+            ballPos = (scene_info['ball'][0], scene_info['ball'][1])
+            if ballPrevPos != None:
+                bounced = bounceCheck(ballPos, ballPrevPos)
+                if bounced == 1:
+                    reward += 0.1
+            currentInput = dataProcess(scene_info)
+            x = currentInput - prevInput if prevInput is not None else np.zeros(4)
+            prevInput = currentInput
 
-                pickle.dump(dataIntoPickle, open(filename, 'wb'))
-                comm.send_instruction(scene_info.frame, PlatformAction.NONE)
-            else:
-                # Add offset to platform to locate center of platform
-                platformLocationX = scene_info.platform[0] + 20
-                platformLocationY = scene_info.platform[1]
-                distancePlatformDestionation = platformLocationX - ball_destination[0]
-                if DEBUG:
-                    print("DEBUG: PlatformLocation: ({}, {})".format(platformLocationX,platformLocationY))
-                    print("DEBUG: Prediction: ({}, {})".format(ball_destination[0],ball_destination[1]))
+            proba = model.predict(np.expand_dims(x, axis=1).T)
+            action = "MOVE_LEFT" if np.random.uniform() < proba else "MOVE_RIGHT"
+            y = 0 if action == "MOVE_LEFT" else 1
+            xTrain.append(x)
+            yTrain.append(y)
 
-                if(abs(distancePlatformDestionation) < 15):
-                    # The platform should be able to catch the ball
-                    # Don't move the platform
-                    data = FrameInfo(scene_info.frame, ball_location, scene_info.platform, 0)
-                    comm.send_instruction(scene_info.frame, PlatformAction.NONE)
-
-                elif distancePlatformDestionation > 0:
-                    # Platform is at RHS of the destination
-                    # Move platform to the left
-                    data = FrameInfo(scene_info.frame, ball_location, scene_info.platform, -1)
-                    comm.send_instruction(scene_info.frame, PlatformAction.MOVE_LEFT)
-
-                else:
-                    # Platform is at LHS of the destination
-                    # Move platform to the right
-                    data = FrameInfo(scene_info.frame, ball_location, scene_info.platform, 1)
-                    comm.send_instruction(scene_info.frame, PlatformAction.MOVE_RIGHT)
-
-                dataIntoPickle.append(data)
-                data.represent()
-                pickle.dump(dataIntoPickle, open(filename, 'wb'))
+            """
+            Send command
+            """
+            comm.send_to_game({"frame": scene_info["frame"], "command": action})
+            reward += 0.00001
+            rewardSum += reward
+            rewards.append(reward)
+            ballPrevPos = ballPos
 
 
-def ballDestination(currentLocation, previousLocation):
-    """
-    ballDestination(currentLocation, previousLocation)
+def dataProcess(scene_info):
+    ballX       = scene_info["ball"][0]
+    ballY       = scene_info["ball"][1]
+    platform1PX = scene_info["platform"][0]
+    platform1PY = scene_info["platform"][1]
+    arr         = np.array([ballX, ballY, platform1PX, platform1PY])
+    return arr
 
-        currentLocation: tuple, stands for ball location (x, y)
-        previousLocation: tuple, stands for ball location (x, y)
+def bounceCheck(ballPos, ballPrevPos):
+    ballPosX     = ballPos[0]
+    ballPosY     = ballPos[1]
+    ballPrevPosX = ballPrevPos[0]
+    ballPrevPosY = ballPrevPos[1]
+    if ballPosY < 360: return 0
+    else:
+        if ballPrevPosY > ballPosY:
+            # Bounced back
+            print("BOUNCED!")
+            return 1
+        else: return 0
 
-        return: tuple, stands for our prediction for the destination of the ball
-    """
-    curX = currentLocation[0]
-    curY = currentLocation[1]
-    preX = previousLocation[0]
-    preY = previousLocation[1]
-    deltaX = curX - preX
-    deltaY = curY - preY
-    if DEBUG:
-        print("DEBUG: currentLocation: ({}, {})".format(curX, curY))
-        print("DEBUG: previousLocation: ({}, {})".format(preX, preY))
-        print("DEBUG: delta: ({}, {})".format(deltaX, deltaY))
-    returnValue = (-1,-1)
-    if(deltaY > 0):
-        # Moving downward
-        # Check if the ball is not at the top of the map
-        # We only calculate when the requirement is meet
-        if curY > 150:
-            while(curY < 400):
-                # Emulate the ball movement
-                curX = curX + deltaX
-                curY = curY + deltaY
-            # The curY should be around 400-ish
-            # Now check value of curX
-            if curX < 0:
-                curX = -curX
-            elif curX > 200:
-                curX = 400 - curX
-            returnValue = (curX, curY)
-    return returnValue
+def penaltyCalculator(platform, ball):
+    platformX = platform[0]
+    ballX = ball[0]
+    if ballX > platformX:
+        # Ball falls from RHS
+        platformX = platformX + 40
+    else:
+        # Ball falls from LHS
+        platformX = platformX
+    distance = abs(platformX - ballX)
+    distance = distance / 160.0
+    return ((1 - distance) * 0.5)
