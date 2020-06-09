@@ -42,13 +42,7 @@ def ml_loop(side: str):
         #      resetting stuff and inform the game process when the ml process
         #      is ready.
         if scene_info["status"] != "GAME_ALIVE":
-            # Do some updating or resetting stuff
-            ball_served = False
-
-            # 3.2.1 Inform the game process that
-            #       the ml process is ready for the next round
-            comm.ml_ready()
-            continue
+            return "RESET"
 
         # 3.3 Put the code here to handle the scene information
 
@@ -74,4 +68,3 @@ def ml_loop(side: str):
             else:
                 comm.send_to_game({"frame": scene_info["frame"], "command": "SERVE_TO_RIGHT"})
                 print("NONE")
-

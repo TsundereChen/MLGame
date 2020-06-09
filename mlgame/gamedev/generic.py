@@ -77,5 +77,4 @@ class FPSCounter:
             self._fps = int(round(self._tick_count / (current_time - self._last_time_updated)))
             self._tick_count = 0
             self._last_time_updated = current_time
-
         return self._fps
