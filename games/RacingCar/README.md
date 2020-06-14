@@ -3,19 +3,20 @@
 [TOC]
 # 賽車
 
-**遊戲版本：1.3**
+**遊戲版本：1.5**
 
 ## 更新
-* 修改電腦的車出現的機制，由原本的定量改為定時出現新的車子，出現方式增加從畫面下方(玩家後面)出現。
-* 修正若上傳的程式沒有回傳指令時出現的Error。
-* 剎車的指令字串改為"BRAKE"，原先的字串"BREAK"是為錯字誤植。
-* 玩家車子一開始改成隨機車道
+* 玩家車子的起始位置調整為畫面的2/3。
+* 改為九個車道，玩家起始位置不相鄰。
+* 遊戲畫面改為800 \* 800 像素。
+* 修改玩家淘汰機制，當玩家車子超過畫面外200像素時才會淘汰。
+* 增加電腦車子產生機制的說明。
 
 ## 概觀
 
-<img src="https://i.imgur.com/4kNeAHx.gif" height="300px" />
+<img src="https://imgur.com/8oICWua.gif" height="400px" />
 
-遊戲開始時，玩家的車由畫面3/4的地方開始起跑，電腦的車子將會從畫面上方或下方進入。玩家的車子不會超過畫面1/4。
+遊戲開始時，玩家的車由畫面2/3的地方開始起跑，電腦的車子將會從畫面上方或下方進入。玩家的車子不會超過畫面前300像素。
 如果車子離開遊戲畫面(速度過慢導致從畫面下方離開、撞到左右兩側邊線)將判定為出局；碰撞到其他車子，不論電腦或是其他玩家則雙方都將出局。
 當有任一玩家距離達到20000，或是所有玩家因碰撞等原因出局時則遊戲結束，並依照當時畫面裡所有玩家的先後順序進行排名，排名包含未達到終點的已出局玩家。
 
@@ -27,12 +28,13 @@
 
 * 搭配[MLGame](https://github.com/LanKuDot/MLGame)執行，請將遊戲放在MLGame/games資料夾中，遊戲資料夾需命名為**RacingCar**
     * 手動模式：
-`python MLGame.py -m RacingCar [the number of user]`
+`python MLGame.py -m RacingCar [the number of user] <difficulty>`
     * 機器學習模式：
-`python MLGame.py -i ml_play_template.py RacingCar [the number of user]`
+`python MLGame.py -i ml_play_template.py RacingCar [the number of user] <difficulty>`
 
 ### 遊戲參數
 
+* `difficulty`:遊戲模式，可選擇"NORMAL"或"COIN"。
 * `the number of user`：指定遊戲玩家人數，最少需一名玩家。單機手動模式最多兩名(鍵盤位置不足)，機器學習模式至多四名。
 
 ## 詳細遊戲資料
@@ -43,7 +45,7 @@
 
 ### 遊戲區域
 
-750 \* 600 像素。
+800 \* 800 像素。
 
 ### 遊戲物件
 
@@ -57,8 +59,9 @@
 #### 電腦車子
 
 * 40 \* 80 像素大小的矩形
-* 車子從畫面上方出現在玩家車子的前方，不會左右移動切換車道，前方有車(不論是電腦還是玩家)會剎車減速，否則不斷加速至最高速
+* 車子從畫面上方或下方出現，不會左右移動切換車道，前方有車(不論是電腦還是玩家)會剎車減速，否則不斷加速至最高速
 * 每台車最高速度皆不一樣。
+* 當遊戲中車子(包含玩家與電腦)數量未超過15輛時，每1.2秒將隨機產生三台車，位置為第123/456/789車到各一。
 
 ## 撰寫玩遊戲的程式
 
@@ -131,4 +134,4 @@ def update(self, scene_info):
 
 賽車是多人遊戲，所以在啟動機器學習模式時，需要利用 `-i <script_for_1P> -i <script_for_2P> -i <script_for_3P> -i <script_for_4P>` 指定最多四個不同的玩家程式。
 * For example
-`python MLGame.py -f 120 -i ml_play_template.py -i ml_play_template.py RacingCar 2`
+`python MLGame.py -f 120 -i ml_play_template.py -i ml_play_template.py RacingCar 2 NORMAL`
