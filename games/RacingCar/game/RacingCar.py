@@ -12,13 +12,6 @@ from .env import *
 
 class RacingCar:
     def __init__(self, user_num: int, difficulty):
-        # if difficulty == "NORMAL":
-        #     self.game_mode = PlayingMode(user_num)
-        #     self.game_type = "NORMAL"
-        # elif difficulty == "COIN":
-        #     self.game_mode = CoinPlayingMode(user_num)
-        #     self.game_type = "COIN"
-        # pass
         self.game_mode = PlayingMode(user_num)
         self.game_type = "NORMAL"
 
@@ -149,33 +142,6 @@ class RacingCar:
                 "player_4_coin_num":player_4_coin_num,
                 "game_result": self.game_mode.winner}
 
-        # elif self.game_type == "COIN":
-        #     for coin in self.game_mode.coins:
-        #         coin_pos.append(coin.get_position())
-        #     scene_info = {
-        #         "frame": self.game_mode.frame,
-        #         "status": self.game_mode.status,
-        #         "computer_cars": computer_cars_pos,
-        #         "lanes": lanes_pos,
-        #         "player1_pos": player_1_pos,
-        #         "player2_pos": player_2_pos,
-        #         "player3_pos": player_3_pos,
-        #         "player4_pos": player_4_pos,
-        #         "player_1_distance": player_1_distance,
-        #         "player_2_distance": player_2_distance,
-        #         "player_3_distance": player_3_distance,
-        #         "player_4_distance": player_4_distance,
-        #         "player_1_velocity": player_1_velocity,
-        #         "player_2_velocity": player_2_velocity,
-        #         "player_3_velocity": player_3_velocity,
-        #         "player_4_velocity": player_4_velocity,
-        #         "player_1_coin_num": player_1_coin_num,
-        #         "player_2_coin_num": player_2_coin_num,
-        #         "player_3_coin_num": player_3_coin_num,
-        #         "player_4_coin_num": player_4_coin_num,
-        #         "coins":coin_pos,
-        #         "game_result": self.game_mode.winner}
-
         return scene_info
 
     def get_game_info(self):
@@ -189,11 +155,15 @@ class RacingCar:
             },
             "game_object": [
                 {"name": "lane", "size": [5, 30], "color": WHITE},
-                {"name": "computer_car", "size": car_size, "color": (0, 191, 255)},
-                {"name": "player1_car", "size": car_size, "color": (255, 246, 143)},
-                {"name": "player2_car", "size": car_size, "color": (0, 255, 127)},
-                {"name": "player3_car", "size": car_size, "color": (255, 191, 203)},
-                {"name": "player4_car", "size": car_size, "color": (171, 130, 255)},
+                {"name": "computer_car", "size": car_size, "color": BLUE},
+                {"name": "player1_car", "size": car_size, "color": YELLOW},
+                {"name": "player2_car", "size": car_size, "color": GREEN},
+                {"name": "player3_car", "size": car_size, "color": RED},
+                {"name": "player4_car", "size": car_size, "color": WHITE},
+                {"name": "player1_car_icon", "size": (10,10), "color": YELLOW},
+                {"name": "player2_car_icon", "size": (10,10), "color": GREEN},
+                {"name": "player3_car_icon", "size": (10,10), "color": RED},
+                {"name": "player4_car_icon", "size": (10,10), "color": WHITE},
             ]
         }
 
@@ -212,10 +182,10 @@ class RacingCar:
                     "player2_car": [scene_info["player2_pos"]],
                     "player3_car": [scene_info["player3_pos"]],
                     "player4_car": [scene_info["player4_pos"]],
-                    "player1_car_icon": [(645,700)],
-                    "player2_car_icon": [(680,700)],
-                    "player3_car_icon": [(715,700)],
-                    "player4_car_icon": [(750,700)],
+                    "player1_car_icon": [(645,500)],
+                    "player2_car_icon": [(680,500)],
+                    "player3_car_icon": [(715,500)],
+                    "player4_car_icon": [(750,500)],
                 },
                 "status": {
                      "player_1_distance": scene_info["player_1_distance"],
